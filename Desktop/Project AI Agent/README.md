@@ -1,8 +1,8 @@
 # Study Assistant Agent
 
-An AI agent that organizes coursework, summarizes notes, builds a spaced-repetition
-revision schedule, and generates quiz questions -- deciding what to do next itself
-via Claude tool-calling, rather than following a fixed script.
+A fully offline study assistant built with Python and Streamlit. It summarizes lecture
+notes, generates quiz questions, and builds a revision schedule — no API key or internet
+connection required.
 
 ## Architecture
 
@@ -10,47 +10,73 @@ via Claude tool-calling, rather than following a fixed script.
 User (Streamlit UI)
       |
       v
-Orchestrator (agent loop)
-      |  -- uses Claude tool-calling to pick the next action
+Orchestrator (keyword-based router)
+      |  -- checks the request text for keywords like
+      |     "summarize", "quiz", "plan"
       v
-Tools: summarize_notes | build_revision_plan | generate_quiz | check_progress
+Functions: summarize() | build_plan() | generate_quiz()
       |
       v
-Task modules (modules/summarizer.py, planner.py, quiz.py)
+Task modules: summarizer.py, planner.py, quiz.py
       |
       v
 Storage (SQLite: notes, schedule, quizzes, quiz_attempts)
 ```
 
-The key difference from a fixed pipeline: the orchestrator doesn't hardcode
-"summarize -> then plan -> then quiz". Claude reads the user's request and
-decides which tool(s) to call, in what order, and can chain them (e.g.
-summarize notes, then immediately generate a quiz from that summary) in a
-single request.
+The orchestrator does not use any external AI model or tool-calling. It reads the
+user's request, matches it against simple keyword rules (`_looks_like_summary`,
+`_looks_like_quiz`, `_looks_like_plan`), and routes it to the matching function.
+This keeps the whole app runnable offline with zero API cost.
 
-## Setup
+## What it does
+
+- Summarizes lecture notes into short bullet points and key terms
+- Generates a mixed quiz (fill-in-the-blank, true/false, multiple choice,
+  short answer) from a saved summary
+- Builds a revision schedule spaced out before an exam date
+- Stores notes, quizzes, and schedules locally in SQLite
+
+## Project structure
+
+- `app.py` - Streamlit user interface (Agent, Notes, Quiz, Schedule, History tabs)
+- `orchestrator.py` - Routes free-text requests to the right feature by keyword
+- `summarizer.py` - Offline extractive summarizer (English and German stopwords)
+- `quiz.py` - Offline quiz generator (cloze, true/false, multiple choice, short answer)
+- `planner.py` - Builds a spaced revision schedule before an exam
+- `storage.py` - SQLite storage layer for notes, schedule, and quizzes
+- `llm_client.py` - Optional AI client stub, not used in offline mode
+
+## How to run
 
 ```bash
 pip install -r requirements.txt
-export ANTHROPIC_API_KEY=your_key_here
 streamlit run app.py
 ```
 
-## Example requests to try in the Agent tab
+## How to use
 
-- "Here are my notes on [topic]: [paste text] -- summarize them for [course]."
-- "I have an exam on 2026-08-15 for Netzwerktechnik, topics: OSI model (hard),
-  subnetting (medium), routing protocols (easy). Build me a revision plan."
-- "Quiz me on [topic] with 5 questions."
-- "What should I study next?"
+### Save a note
+Open the **Notes** tab, enter course, topic, and paste your notes, then click
+**Summarize and Save**.
 
-## Extending this
+### Make a quiz
+Open the **Quiz** tab, enter the same course and topic used for a saved note,
+then click **Generate Quiz**.
 
-- **Grading**: `quiz.score_attempt` does simple string matching -- swap in an
-  LLM-graded rubric for short-answer questions.
-- **Ingestion**: currently notes are pasted as text; add a PDF/slide upload
-  path (`pdf` skill / PyPDF2) to feed in real lecture material.
-- **Spaced repetition**: `planner.py` uses fixed intervals by difficulty --
-  a real SM-2 algorithm would adapt intervals based on quiz performance over time.
-- **Multi-course dashboard**: the schedule/history tabs currently show one
-  course at a time; a combined view across courses would be a natural next step.
+### Build a revision plan
+Open the **Schedule** tab, enter course, exam date, and topics (one per line,
+optionally `topic, difficulty`), then click **Build Plan**.
+
+### Use the Agent tab
+Type a free-text request such as:
+- `summarize: paste your notes here`
+- `quiz me on physics`
+- `make a plan for 2026-08-10`
+
+The orchestrator detects the keyword and calls the matching feature directly.
+
+## Notes
+
+This app is fully offline and does not require any API key. `llm_client.py` is
+included as a placeholder for a future upgrade path if a live LLM is added later,
+but it is not called anywhere in the current code.
